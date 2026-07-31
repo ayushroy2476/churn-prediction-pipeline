@@ -1,0 +1,48 @@
+# Requires these repo secrets:
+#   GCP_PROJECT_ID           - your GCP project id
+#   BQ_MARTS_DATASET         - e.g. olist_marts
+#   GCP_SERVICE_ACCOUNT_KEY  - full JSON contents of a service account key
+#                               with BigQuery Data Editor + Job User roles
+#
+# Uses the `ci` target defined in dbt_project/profiles_example.yml, which
+# writes to a separate ci_<dataset> so CI runs never touch your dev data.
+
+name: dbt CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  dbt-build-test:
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      BQ_MARTS_DATASET: ${{ secrets.BQ_MARTS_DATASET }}
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt_project
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        run: pip install dbt-bigquery
+
+      - name: Write profiles.yml
+        run: cp dbt_project/profiles_example.yml dbt_project/profiles.yml
+
+      - name: Authenticate to GCP
+        run: |
+          echo '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}' > /tmp/gcp-key.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json" >> "$GITHUB_ENV"
+
+      - name: dbt deps
+        working-directory: dbt_project
+        run: dbt deps
+
+      - name: dbt build (CI target)
+        working-directory: dbt_project
+        run: dbt build --target ci

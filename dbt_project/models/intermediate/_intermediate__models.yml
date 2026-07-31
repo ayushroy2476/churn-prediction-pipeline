@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: int_order_items_agg
+    description: One row per order with item counts and price/freight totals.
+    columns:
+      - name: order_id
+        tests:
+          - unique
+          - not_null
+
+  - name: int_order_payments_agg
+    description: One row per order with total payment value and primary payment method.
+    columns:
+      - name: order_id
+        tests:
+          - unique
+          - not_null
+
+  - name: int_orders_enriched
+    description: One row per order, joined with customer, item, payment, and review info.
+    columns:
+      - name: order_id
+        tests:
+          - not_null

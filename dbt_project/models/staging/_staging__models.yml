@@ -1,0 +1,67 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: One row per order with cast timestamp columns.
+    columns:
+      - name: order_id
+        tests:
+          - unique
+          - not_null
+      - name: order_status
+        tests:
+          - not_null
+
+  - name: stg_order_items
+    description: One row per order line item.
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+      - name: product_id
+        tests:
+          - not_null
+
+  - name: stg_order_payments
+    description: One row per payment installment/method on an order.
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+
+  - name: stg_order_reviews
+    description: One row per customer review.
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+      - name: review_score
+        tests:
+          - not_null
+
+  - name: stg_customers
+    description: One row per order-customer record. Use customer_unique_id to identify a person.
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - not_null
+      - name: customer_unique_id
+        tests:
+          - not_null
+
+  - name: stg_products
+    description: One row per product, category translated to English.
+    columns:
+      - name: product_id
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_sellers
+    description: One row per seller.
+    columns:
+      - name: seller_id
+        tests:
+          - unique
+          - not_null

@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: One row per unique customer (customer_unique_id) with lifetime aggregates.
+    columns:
+      - name: customer_unique_id
+        tests:
+          - unique
+          - not_null
+
+  - name: fct_orders
+    description: One row per order, enriched with customer, payment, and review info.
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+
+  - name: feature_customer_ml
+    description: >
+      ML feature table for repeat-purchase prediction. Features are computed
+      only from each customer's first order to avoid label leakage.
+    columns:
+      - name: customer_unique_id
+        tests:
+          - unique
+          - not_null
+      - name: repeat_within_90d
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false

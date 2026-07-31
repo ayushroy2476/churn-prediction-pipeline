@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment / secrets
+.env
+*.json
+!dbt_project/*.yml
+
+# Data
+data/raw/
+*.csv
+
+# dbt
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+
+# Model artifacts
+models_artifacts/
+
+# Airflow
+airflow/logs/
+airflow/plugins/
