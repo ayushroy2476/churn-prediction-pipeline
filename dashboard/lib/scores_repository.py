@@ -25,4 +25,4 @@ def load_predictions() -> pd.DataFrame:
     # this to the columns the dashboard actually uses -- BigQuery bills by
     # columns scanned, so there's no reason to pay for feature columns
     # nobody's looking at here.
-    return client.query(query).to_dataframe(create_bqstorage_client=True)
+    return client.query(query).to_dataframe(create_bqstorage_client=False)
