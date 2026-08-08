@@ -5,7 +5,7 @@ Reads the scored-customer table produced by the `score_customers` task of
 the daily `churn_prediction_pipeline` Airflow DAG, and gives the CRM /
 marketing team a way to explore, filter, and export the results.
 
-Run with:
+Run from the project root with:
     streamlit run dashboard/streamlit_app.py
 
 Required env vars (see .env.example):
@@ -20,39 +20,22 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from dotenv import load_dotenv
-from google.cloud import bigquery
+
+from lib.scores_repository import load_predictions
+from lib.scoring_service import HIGH_THRESHOLD, LOW_THRESHOLD, TIER_ORDER, likelihood_tier
+from lib.styling import ACCENT, TIER_COLORS, inject_custom_css
 
 load_dotenv()
 
-st.set_page_config(page_title="Repeat-Purchase Dashboard", layout="wide")
+st.set_page_config(
+    page_title="Olist \u00b7 Repeat-Purchase Dashboard",
+    page_icon="\U0001F6D2",
+    layout="wide",
+)
+inject_custom_css()
 
-TABLE_NAME = "customer_repeat_purchase_scores"
-
-
-@st.cache_data(ttl=3600, show_spinner="Loading predictions from BigQuery...")
-def load_predictions() -> pd.DataFrame:
-    project_id = os.environ["GCP_PROJECT_ID"]
-    dataset = os.environ.get(
-        "BQ_PREDICTIONS_DATASET", os.environ.get("BQ_MARTS_DATASET", "olist_marts")
-    )
-    client = bigquery.Client(project=project_id)
-    query = f"select * from `{project_id}.{dataset}.{TABLE_NAME}`"
-    # `select *` is fine for now, but once the mart schema is settled, trim
-    # this to the columns the dashboard actually uses -- BigQuery bills by
-    # columns scanned, so there's no reason to pay for feature columns
-    # nobody's looking at here.
-    return client.query(query).to_dataframe(create_bqstorage_client=False)
-
-
-def risk_tier(p: float) -> str:
-    if p >= 0.66:
-        return "High (>=66%)"
-    if p >= 0.33:
-        return "Medium (33-66%)"
-    return "Low (<33%)"
-
-
-st.title("Customer Repeat-Purchase Dashboard")
+st.caption("OLIST DATA PLATFORM")
+st.title("Repeat-Purchase Dashboard")
 
 if "GCP_PROJECT_ID" not in os.environ:
     st.error(
@@ -75,26 +58,18 @@ if df.empty:
     )
     st.stop()
 
-df["risk_tier"] = df["repeat_purchase_probability"].apply(risk_tier)
+df["likelihood_tier"] = df["repeat_purchase_probability"].apply(likelihood_tier)
 
-# ------------------------------------------------------------------ header
-
-header_left, header_right = st.columns([4, 1])
-with header_left:
+meta_col, refresh_col = st.columns([5, 1])
+with meta_col:
     if "score_date" in df.columns:
         as_of = pd.to_datetime(df["score_date"]).max().date()
         st.caption(f"Data as of {as_of}")
-    st.caption(
-        "Estimated likelihood a customer places another order, from the "
-        "repeat-purchase model. These are estimates, not guarantees -- use "
-        "them to prioritize outreach, not as a sole targeting rule."
-    )
-with header_right:
+with refresh_col:
+    st.write("")  # cheap vertical nudge so the button lines up with the caption
     if st.button("Refresh data", use_container_width=True):
         load_predictions.clear()
         st.rerun()
-
-# ----------------------------------------------------------------- filters. 
 
 st.sidebar.header("Filters")
 
@@ -118,27 +93,33 @@ if filtered.empty:
     st.warning("No customers match the current filters.")
     st.stop()
 
-# ------------------------------------------------------------------- KPIs
-
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Customers scored", f"{len(filtered):,}")
 col2.metric(
-    "Avg. repeat probability", f"{filtered['repeat_purchase_probability'].mean():.1%}"
+    "Avg. repeat probability",
+    f"{filtered['repeat_purchase_probability'].mean():.1%}",
+    help="Model estimate, not a guarantee -- use it to prioritize outreach, "
+    "not as a sole targeting rule.",
 )
 col3.metric(
-    "High-likelihood (>=66%)",
-    f"{(filtered['repeat_purchase_probability'] >= 0.66).sum():,}",
+    f"High-likelihood (>={HIGH_THRESHOLD:.0%})",
+    f"{(filtered['repeat_purchase_probability'] >= HIGH_THRESHOLD).sum():,}",
 )
 col4.metric(
-    "Low-likelihood (<33%)",
-    f"{(filtered['repeat_purchase_probability'] < 0.33).sum():,}", 
+    f"Low-likelihood (<{LOW_THRESHOLD:.0%})",
+    f"{(filtered['repeat_purchase_probability'] < LOW_THRESHOLD).sum():,}",
 )
 
 overview_tab, explorer_tab = st.tabs(["Overview", "Customer explorer"])
 
 with overview_tab:
     st.subheader("Repeat-purchase probability distribution")
-    fig = px.histogram(filtered, x="repeat_purchase_probability", nbins=30)
+    fig = px.histogram(
+        filtered,
+        x="repeat_purchase_probability",
+        nbins=30,
+        color_discrete_sequence=[ACCENT],
+    )
     fig.update_layout(xaxis_tickformat=".0%")
     st.plotly_chart(fig, use_container_width=True)
 
@@ -152,22 +133,34 @@ with overview_tab:
             .reset_index()
             .sort_values("repeat_purchase_probability", ascending=False)
         )
-        fig2 = px.bar(by_state, x="customer_state", y="repeat_purchase_probability")
+        fig2 = px.bar(
+            by_state,
+            x="customer_state",
+            y="repeat_purchase_probability",
+            color_discrete_sequence=[ACCENT],
+        )
         fig2.update_layout(yaxis_tickformat=".0%")
         st.plotly_chart(fig2, use_container_width=True)
 
     with right:
-        st.subheader("Customers by risk tier")
-        tier_order = ["Low (<33%)", "Medium (33-66%)", "High (>=66%)"]
+        st.subheader("Customers by likelihood tier")
         tier_counts = (
-            filtered["risk_tier"]
+            filtered["likelihood_tier"]
             .value_counts()
-            .reindex(tier_order)
+            .reindex(TIER_ORDER)
             .fillna(0)
             .reset_index()
         )
-        tier_counts.columns = ["risk_tier", "customers"]
-        fig3 = px.bar(tier_counts, x="risk_tier", y="customers")
+        tier_counts.columns = ["likelihood_tier", "customers"]
+        fig3 = px.bar(
+            tier_counts,
+            x="likelihood_tier",
+            y="customers",
+            color="likelihood_tier",
+            color_discrete_sequence=TIER_COLORS,
+            category_orders={"likelihood_tier": TIER_ORDER},
+        )
+        fig3.update_layout(showlegend=False)
         st.plotly_chart(fig3, use_container_width=True)
 
 with explorer_tab:
@@ -204,3 +197,9 @@ with explorer_tab:
         file_name="repeat_purchase_scores.csv",
         mime="text/csv",
     )
+
+st.divider()
+st.caption(
+    "Refreshes daily via the `churn_prediction_pipeline` Airflow DAG \u00b7 "
+    "owned by data-eng \u00b7 questions in #data-eng"
+)
