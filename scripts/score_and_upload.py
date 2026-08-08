@@ -15,7 +15,6 @@ execute -- and defaults to today (UTC) when run by hand.
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 from datetime import date, datetime, timezone
@@ -41,13 +40,9 @@ NUMERIC_FEATURES = [
 CATEGORICAL_FEATURES = ["customer_state", "first_order_product_category"]
 
 # Resolved relative to this file, not the caller's working directory --
-# Airflow's BashOperator doesn't `cd` before running this script, so a
-# bare relative path here would depend on whatever CWD the worker
-# happened to have. Assumes models_artifacts/ sits next to scripts/ at
-# the project root; adjust if your layout differs.
+# Airflow's BashOperator doesn't `cd` before running this script.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = PROJECT_ROOT / "models_artifacts" / "repeat_purchase_model.joblib"
-FILL_VALUES_PATH = PROJECT_ROOT / "models_artifacts" / "feature_fill_values.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,35 +61,7 @@ def load_features(client: bigquery.Client, project_id: str, marts_dataset: str) 
         select *
         from `{project_id}.{marts_dataset}.feature_customer_ml`
     """
-    return client.query(query).to_dataframe(create_bqstorage_client=False)
-
-
-def load_fill_values() -> dict | None:
-    """Fill values computed once at training time (see train_model.py),
-    so scoring imputes with the same statistics the model was trained on.
-    Falls back to per-batch stats if the sidecar file isn't there yet, but
-    logs a warning -- per-batch imputation means a customer's score can
-    drift day to day purely because *other* customers in that day's batch
-    changed, which is a real training/serving skew risk."""
-    if not FILL_VALUES_PATH.exists():
-        logger.warning(
-            "%s not found -- falling back to imputing from today's batch "
-            "instead of training-time statistics. See train_model.py.",
-            FILL_VALUES_PATH,
-        )
-        return None
-    with open(FILL_VALUES_PATH) as f:
-        return json.load(f)
-
-
-def apply_imputation(df: pd.DataFrame, fill_values: dict | None) -> pd.DataFrame:
-    for col in NUMERIC_FEATURES:
-        fill = fill_values[col] if fill_values else df[col].median()
-        df[col] = df[col].fillna(fill)
-    for col in CATEGORICAL_FEATURES:
-        fill = fill_values[col] if fill_values else "unknown"
-        df[col] = df[col].fillna(fill)
-    return df
+    return client.query(query).to_dataframe(create_bqstorage_client=True)
 
 
 def main() -> None:
@@ -116,7 +83,6 @@ def main() -> None:
             f"No model found at {MODEL_PATH}. Run scripts/train_model.py first."
         )
     pipeline = joblib.load(MODEL_PATH)
-    fill_values = load_fill_values()
 
     df = load_features(client, project_id, marts_dataset)
     logger.info("Loaded %d rows from feature_customer_ml", len(df))
@@ -128,8 +94,11 @@ def main() -> None:
             "upstream dbt models before rerunning."
         )
 
-    df = apply_imputation(df, fill_values)
-
+    # No manual imputation here, on purpose. The pipeline's own imputer --
+    # fit on the training fold in train_model.py, serialized into the
+    # .joblib artifact -- handles missing values the same way it did during
+    # training. Pre-filling here with different values, like an earlier
+    # version of this script did, would just override that.
     X = df[NUMERIC_FEATURES + CATEGORICAL_FEATURES]
     df["repeat_purchase_probability"] = pipeline.predict_proba(X)[:, 1]
     df["score_date"] = args.date
