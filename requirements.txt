@@ -11,3 +11,4 @@ dbt-bigquery>=1.7
 streamlit>=1.33
 plotly>=5.20
 kaggle>=1.6
+pytest>=8.0
