@@ -1,0 +1,10 @@
+/* Hide Streamlit's default chrome -- this is an internal tool, not a demo. */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+
+div[data-testid="stMetric"] {
+    background: #F7F9F9;
+    border: 1px solid #E3E8E8;
+    border-radius: 10px;
+    padding: 14px 16px 6px 16px;
+}
