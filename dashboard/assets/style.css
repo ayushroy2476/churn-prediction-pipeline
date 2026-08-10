@@ -8,3 +8,11 @@ div[data-testid="stMetric"] {
     border-radius: 10px;
     padding: 14px 16px 6px 16px;
 }
+
+/* The box above is a fixed light color regardless of theme, so the text
+   inside it needs to be fixed too -- letting it inherit the page's theme
+   color is what caused near-invisible light-on-light metric numbers when
+   the page fell back to dark mode. */
+div[data-testid="stMetric"] * {
+    color: #1A1A1A !important;
+}
