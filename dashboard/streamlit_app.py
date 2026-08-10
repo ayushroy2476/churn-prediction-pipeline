@@ -67,7 +67,7 @@ with meta_col:
         st.caption(f"Data as of {as_of}")
 with refresh_col:
     st.write("")  # cheap vertical nudge so the button lines up with the caption
-    if st.button("Refresh data", use_container_width=True):
+    if st.button("Refresh data", width="stretch"):
         load_predictions.clear()
         st.rerun()
 
@@ -121,7 +121,7 @@ with overview_tab:
         color_discrete_sequence=[ACCENT],
     )
     fig.update_layout(xaxis_tickformat=".0%")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     left, right = st.columns(2)
 
@@ -140,7 +140,7 @@ with overview_tab:
             color_discrete_sequence=[ACCENT],
         )
         fig2.update_layout(yaxis_tickformat=".0%")
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width="stretch")
 
     with right:
         st.subheader("Customers by likelihood tier")
@@ -161,7 +161,7 @@ with overview_tab:
             category_orders={"likelihood_tier": TIER_ORDER},
         )
         fig3.update_layout(showlegend=False)
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig3, width="stretch")
 
 with explorer_tab:
     st.subheader("Customer-level scores")
@@ -181,7 +181,7 @@ with explorer_tab:
     st.caption(f"{len(table):,} customers shown")
     st.dataframe(
         table.sort_values("repeat_purchase_probability", ascending=False),
-        use_container_width=True,
+        width="stretch",
         column_config={
             "repeat_purchase_probability": st.column_config.ProgressColumn(
                 "Repeat-purchase probability",
